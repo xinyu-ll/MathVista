@@ -212,20 +212,20 @@ def create_one_query(problem, examples, shot_num, shot_type, use_caption, use_oc
     if shot_type == 'solution':
         if question_type == "multi_choice":
             assert answer_type == "text"
-            hint_text = f"Hint: Please answer the question and provide the correct option letter, e.g., A, B, C, D, at the end."
+            hint_text = f"Hint: Please answer the question and provide the correct option letter, e.g., A, B, C, D, at the end.\nIMPORTANT: Your final answer must be in the format 'Final Answer: X' where X is the option letter (A, B, C, or D)."
         else:
             assert answer_type in ["integer", "float", "list"]
             if answer_type == "integer":
-                hint_text = f"Hint: Please answer the question requiring an integer answer and provide the final value, e.g., 1, 2, 3, at the end."
+                hint_text = f"Hint: Please answer the question requiring an integer answer and provide the final value, e.g., 1, 2, 3, at the end.\nIMPORTANT: Your final answer must be in the format 'Final Answer: X' where X is the integer value."
 
             elif answer_type == "float" and precision == 1:
-                hint_text = f"Hint: Please answer the question requiring a floating-point number with one decimal place and provide the final value, e.g., 1.2, 1.3, 1.4, at the end."
+                hint_text = f"Hint: Please answer the question requiring a floating-point number with one decimal place and provide the final value, e.g., 1.2, 1.3, 1.4, at the end.\nIMPORTANT: Your final answer must be in the format 'Final Answer: X.Y' where X.Y is the float value with one decimal place."
 
             elif answer_type == "float" and precision == 2:
-                hint_text = f"Hint: Please answer the question requiring a floating-point number with two decimal places and provide the final value, e.g., 1.23, 1.34, 1.45, at the end."
+                hint_text = f"Hint: Please answer the question requiring a floating-point number with two decimal places and provide the final value, e.g., 1.23, 1.34, 1.45, at the end.\nIMPORTANT: Your final answer must be in the format 'Final Answer: X.YZ' where X.YZ is the float value with two decimal places."
 
             elif answer_type == "list":
-                hint_text = f"Hint: Please answer the question requiring a Python list as an answer and provide the final list, e.g., [1, 2, 3], [1.2, 1.3, 1.4], at the end."
+                hint_text = f"Hint: Please answer the question requiring a Python list as an answer and provide the final list, e.g., [1, 2, 3], [1.2, 1.3, 1.4], at the end.\nIMPORTANT: Your final answer must be in the format 'Final Answer: [...]' where [...] is the Python list."
     else:
         assert shot_type == 'code'
         hint_text = "Hint: Please generate a python code to solve the problem"

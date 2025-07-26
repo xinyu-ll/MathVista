@@ -16,3 +16,5 @@ checkpoints/*.pt
 
 # Output
 _results
+
+*.json

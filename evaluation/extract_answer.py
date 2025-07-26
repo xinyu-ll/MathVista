@@ -26,7 +26,128 @@ def create_test_prompt(demo_prompt, query, response):
     return full_prompt
 
 
+def extract_answer_regex(response, problem):
+    """
+    使用正则表达式提取答案，不依赖API调用
+    """
+    question_type = problem['question_type']
+    answer_type = problem['answer_type']
+    choices = problem['choices']
+    
+    if response == "":
+        return ""
+    
+    response = response.strip()
+    
+    # 首先尝试提取 "Final Answer: X" 格式的答案
+    final_answer_pattern = r'Final Answer:\s*(.+?)(?:\n|$)'
+    final_answer_match = re.search(final_answer_pattern, response, re.IGNORECASE)
+    
+    if final_answer_match:
+        extracted = final_answer_match.group(1).strip()
+        
+        if question_type == 'multi_choice':
+            # 多选题处理
+            if extracted in choices:
+                return extracted
+            
+            # 如果是选项字母，转换为对应的选项内容
+            if len(extracted) == 1 and extracted.upper() in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ':
+                letter_index = ord(extracted.upper()) - ord('A')
+                if 0 <= letter_index < len(choices):
+                    return choices[letter_index]
+        
+        elif answer_type in ["integer", "float"]:
+            # 数值型答案处理
+            try:
+                if answer_type == "integer":
+                    return str(int(float(extracted)))
+                else:
+                    return str(float(extracted))
+            except ValueError:
+                pass
+        
+        elif answer_type == "list":
+            # 列表型答案处理
+            if extracted.startswith('[') and extracted.endswith(']'):
+                return extracted
+    
+    # 如果没有找到 "Final Answer:" 格式，使用备用提取方法
+    return extract_answer_fallback(response, problem)
+
+
+def extract_answer_fallback(response, problem):
+    """
+    备用答案提取方法，用于处理没有标准格式的回答
+    """
+    question_type = problem['question_type']
+    answer_type = problem['answer_type']
+    choices = problem['choices']
+    
+    if question_type == 'multi_choice':
+        # 多选题备用提取
+        # 1. 直接匹配选项内容
+        for choice in choices:
+            if choice.lower() in response.lower():
+                return choice
+        
+        # 2. 提取选项字母
+        letter_patterns = [
+            r'答案是\s*([A-Z])',
+            r'answer is\s*([A-Z])',
+            r'选择\s*([A-Z])',
+            r'选项\s*([A-Z])',
+            r'正确答案是\s*([A-Z])',
+            r'\(([A-Z])\)',
+            r'([A-Z])(?:[.,!?]|\s|$)'
+        ]
+        
+        for pattern in letter_patterns:
+            matches = re.findall(pattern, response, re.IGNORECASE)
+            if matches:
+                letter = matches[-1].upper()
+                letter_index = ord(letter) - ord('A')
+                if 0 <= letter_index < len(choices):
+                    return choices[letter_index]
+    
+    elif answer_type in ["integer", "float"]:
+        # 数值型答案备用提取
+        number_patterns = [
+            r'答案是\s*([-+]?\d*\.?\d+)',
+            r'answer is\s*([-+]?\d*\.?\d+)',
+            r'结果是\s*([-+]?\d*\.?\d+)',
+            r'等于\s*([-+]?\d*\.?\d+)',
+            r'为\s*([-+]?\d*\.?\d+)',
+            r'是\s*([-+]?\d*\.?\d+)',
+            r'([-+]?\d*\.?\d+)(?:[.,!?]|\s*$)'
+        ]
+        
+        for pattern in number_patterns:
+            matches = re.findall(pattern, response)
+            if matches:
+                try:
+                    num = float(matches[-1])
+                    if answer_type == "integer":
+                        return str(int(num))
+                    else:
+                        return str(num)
+                except ValueError:
+                    continue
+    
+    elif answer_type == "list":
+        # 列表型答案备用提取
+        list_pattern = r'\[([^\]]+)\]'
+        matches = re.findall(list_pattern, response)
+        if matches:
+            return f"[{matches[-1]}]"
+    
+    return ""
+
+
 def extract_answer(model, response, problem, quick_extract=False):
+    """
+    主要的答案提取函数，优先使用正则表达式提取
+    """
     question_type = problem['question_type']
     answer_type = problem['answer_type']
     choices = problem['choices']
@@ -36,27 +157,14 @@ def extract_answer(model, response, problem, quick_extract=False):
     if response == "":
         return ""
 
-    if question_type == 'multi_choice' and response in choices:
-        return response
+    # 使用新的正则表达式提取方法
+    extraction = extract_answer_regex(response, problem)
+    if extraction:
+        return extraction
 
-    if answer_type == "integer":
-        try:
-            extraction = int(response)
-            return str(extraction)
-        except Exception as e:
-            pass
-
-    if answer_type == "float":
-        try:
-            extraction = str(float(response))
-            return extraction
-        except Exception as e:
-            pass
-
-    # quick extraction
+    # 如果正则表达式提取失败，并且quick_extract为True，尝试旧的快速提取
     if quick_extract:
         logging.info("Quickly extracting answer...")
-        # The answer is "text". -> "text"
         try:
             result = re.search(r'The answer is "(.*)"\.', response)
             if result:
@@ -65,14 +173,15 @@ def extract_answer(model, response, problem, quick_extract=False):
         except Exception as e:
             pass
 
-    # general extraction
-    try:
-        full_prompt = create_test_prompt(demo_prompt, query, response)
-        extraction = model.get_response(user_prompt=full_prompt)
-        return extraction
-    except Exception as e:
-        logging.info(f"Error in extracting answer for problem: {pid} with response: {response}")
-        logging.info(e)
+    # 最后尝试使用API提取（如果model不为None）
+    if model is not None:
+        try:
+            full_prompt = create_test_prompt(demo_prompt, query, response)
+            extraction = model.get_response(user_prompt=full_prompt)
+            return extraction
+        except Exception as e:
+            logging.info(f"Error in extracting answer for problem: {pid} with response: {response}")
+            logging.info(e)
 
     return ""
 

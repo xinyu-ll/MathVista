@@ -54,7 +54,7 @@ def evaluate_code(code_string):
 def parse_args():
     parser = argparse.ArgumentParser()
     # input
-    parser.add_argument('--dataset_name', type=str, default='AI4Math/MathVista')
+    parser.add_argument('--dataset_name', type=str, default='/run/determined/NAS1/data/AI4Math/MathVista')
     parser.add_argument('--test_split_name', type=str, default='testmini')
     parser.add_argument('--data_dir', type=str, default='../data')
     parser.add_argument('--input_file', type=str, default='testmini.json')
@@ -69,7 +69,7 @@ def parse_args():
     parser.add_argument("--conv-mode", type=str, default="vicuna_v1")
     parser.add_argument("--sep", type=str, default=",")
     parser.add_argument("--temperature", type=float, default=0.2)
-    parser.add_argument("--top_p", type=float, default=None)
+    parser.add_argument("--top_p", type=float, default=0.9)
     parser.add_argument("--num_beams", type=int, default=1)
     parser.add_argument("--max_new_tokens", type=int, default=512)
     # Remote model
@@ -78,7 +78,7 @@ def parse_args():
         type=str,
         default='gpt-3.5-turbo',
         help='llm engine',
-        choices=['gpt-3.5-turbo', 'claude-2', 'gpt4', 'gpt-4-0613', 'bard'],
+        choices=['gpt-3.5-turbo', 'claude-2', 'gpt4', 'gpt-4-0613', 'bard', 'qwen2vl'],
     )
     parser.add_argument('--key', type=str, default='', help='key for llm api')
     # query
@@ -96,6 +96,10 @@ def parse_args():
     parser.add_argument('--azure_openai_api_key', type=str, default=os.getenv("AZURE_OPENAI_API_KEY"))
     parser.add_argument('--azure_openai_api_version', type=str, default=os.getenv("AZURE_OPENAI_API_VERSION"))
     parser.add_argument('--azure_openai_model', type=str, default=os.getenv("AZURE_OPENAI_MODEL"))
+    # Qwen2VL specific arguments
+    parser.add_argument('--qwen2vl_model_path', type=str, default='Qwen/Qwen2-VL-7B-Instruct', help='Qwen2VL model path')
+    parser.add_argument('--tensor_parallel_size', type=int, default=1, help='Tensor parallel size for VLLM')
+    parser.add_argument('--gpu_memory_utilization', type=float, default=0.9, help='GPU memory utilization for VLLM')
     args = parser.parse_args()
     return args
 
@@ -146,11 +150,23 @@ def main():
 
     # If we were given a custom model path, load that model, otherwise use a remote service model
     if args.model_path:
-        # from models import llava
-
         logging.info(f"Loading model from {args.model_path}...")
-        # TODO: Add support for local models
-        raise NotImplementedError("Local models are not yet supported.")
+        
+        # Check if this is a Qwen2VL model based on model name or explicit flag
+        if args.model == 'qwen2vl' or 'qwen2vl' in args.model_path.lower():
+            from models import qwen2vl
+
+            model = qwen2vl.Qwen2VL_Model(
+                model_path=args.model_path,
+                temperature=args.temperature,
+                top_p=args.top_p,
+                max_tokens=args.max_new_tokens,
+                tensor_parallel_size=args.tensor_parallel_size,
+                gpu_memory_utilization=args.gpu_memory_utilization,
+            )
+        else:
+            # TODO: Add support for other local models
+            raise NotImplementedError("Only Qwen2VL local models are currently supported.")
     else:
         model_name = args.azure_openai_model if args.azure_openai_model else args.model
         logging.info(f"Loading {model_name}...")
@@ -201,6 +217,17 @@ def main():
             else:
                 key = args.key
             model = claude.Claude_Model(model_name, key)
+        elif model_name == 'qwen2vl':
+            from models import qwen2vl
+
+            model = qwen2vl.Qwen2VL_Model(
+                model_path=args.qwen2vl_model_path,
+                temperature=args.temperature,
+                top_p=args.top_p,
+                max_tokens=args.max_new_tokens,
+                tensor_parallel_size=args.tensor_parallel_size,
+                gpu_memory_utilization=args.gpu_memory_utilization,
+            )
         else:
             raise ValueError(f"Model {model_name} not supported.")
 
@@ -250,7 +277,9 @@ def main():
         problem.pop('decoded_image')
 
         query = query_data[problem_id]
-
+        # print(f"280, {query}")
+        # print(f"281, {problem_decoded_image}")
+        # assert 0
         logging.debug("--------------------------------------------------------------")
         logging.debug(f"Generating response for problem: {problem_id}...")
         try:
