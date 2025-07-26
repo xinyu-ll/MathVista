@@ -73,9 +73,27 @@ class Qwen2VL_Model:
         img_bytes = buffered.getvalue()
         return base64.b64encode(img_bytes).decode('utf-8')
 
-    def get_response(self, user_prompt: str, decoded_image: Union[Image.Image, None] = None) -> str:
-        """Generate response using VLLM backend"""
+    def get_response(self, user_prompt: str, decoded_image: Union[Image.Image, None] = None, num_answers: int = 1) -> Union[str, list]:
+        """Generate response(s) using VLLM backend
+        
+        Args:
+            user_prompt: The prompt text
+            decoded_image: Optional image input
+            num_answers: Number of answers to generate (default: 1)
+            
+        Returns:
+            str if num_answers=1, list of str if num_answers>1
+        """
         patience = self.patience
+        
+        # Create sampling parameters for this specific request
+        sampling_params = SamplingParams(
+            temperature=self.temperature,
+            top_p=self.top_p,
+            max_tokens=self.max_tokens,
+            n=num_answers,  # Generate multiple outputs
+            stop_token_ids=None,
+        )
         
         while patience > 0:
             patience -= 1
@@ -112,17 +130,30 @@ class Qwen2VL_Model:
                         }
                     ]
                 
-                # Generate response using VLLM
+                # Generate response(s) using VLLM
                 outputs = self.llm.chat(
                     messages=messages,
-                    sampling_params=self.sampling_params,
+                    sampling_params=sampling_params,
                     use_tqdm=False
                 )
                 
                 if outputs and len(outputs) > 0:
-                    response = outputs[0].outputs[0].text.strip()
-                    if response and response != "":
-                        return response
+                    # Extract all generated responses
+                    responses = []
+                    for output in outputs[0].outputs:
+                        response = output.text.strip()
+                        if response and response != "":
+                            responses.append(response)
+                    
+                    if responses:
+                        # Return single response if num_answers=1, otherwise return list
+                        if num_answers == 1:
+                            return responses[0]
+                        else:
+                            # Pad with empty responses if we got fewer than requested
+                            while len(responses) < num_answers:
+                                responses.append("")
+                            return responses[:num_answers]
                 
                 logging.warning("Empty response generated, retrying...")
                 
@@ -138,8 +169,8 @@ class Qwen2VL_Model:
                     break
                 elif "max_tokens" in str(e).lower():
                     # Reduce max tokens and retry
-                    self.sampling_params.max_tokens = max(32, int(self.sampling_params.max_tokens * 0.8))
-                    logging.warning(f"Reduced max_tokens to {self.sampling_params.max_tokens}")
+                    sampling_params.max_tokens = max(32, int(sampling_params.max_tokens * 0.8))
+                    logging.warning(f"Reduced max_tokens to {sampling_params.max_tokens}")
                 elif "cannot write mode" in str(e).lower() and "as JPEG" in str(e).lower():
                     logging.error("Image format error. This should be fixed by RGB conversion.")
                     break
@@ -147,7 +178,11 @@ class Qwen2VL_Model:
                 if self.sleep_time > 0:
                     time.sleep(self.sleep_time)
         
-        return ""
+        # Return appropriate empty response based on num_answers
+        if num_answers == 1:
+            return ""
+        else:
+            return [""] * num_answers
 
     def __del__(self):
         """Cleanup VLLM resources"""
