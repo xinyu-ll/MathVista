@@ -238,10 +238,10 @@ def main():
         extraction = extract_answer_regex(response, problem)
         results[pid]['extraction'] = extraction
         
-        if args.verbose and extraction:
-            print(f"问题 {pid}: 提取到答案 '{extraction}'")
-        elif args.verbose:
-            print(f"问题 {pid}: 未能提取到答案")
+        # if args.verbose and extraction:
+        #     print(f"问题 {pid}: 提取到答案 '{extraction}'")
+        # elif args.verbose:
+        #     print(f"问题 {pid}: 未能提取到答案")
         
         # 定期保存结果
         if (i % args.save_every == 0 and i > 0) or i == len(test_pids) - 1:

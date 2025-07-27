@@ -2,11 +2,11 @@
 
 # Configuration
 cd /home/xinyu/dev/MathVista
-temperature=0.2
-top_p=0.9
-num_answers=1  # Number of answers to generate per problem
+temperature=0.6
+top_p=0.99
+num_answers=4  # Number of answers to generate per problem
 dataset_size=1000  # Default dataset size, will be updated based on actual data
-tensor_parallel_size=1  # GPUs per process
+tensor_parallel_size=2  # GPUs per process
 
 # Detect number of available GPUs
 if [ -z "$CUDA_VISIBLE_DEVICES" ]; then
@@ -30,7 +30,7 @@ if [ $num_processes -eq 0 ]; then
 fi
 
 # Create output directory name with temperature, top_p, GPU count, and number of answers
-output_dir="logs/qwen2vl_temp_${temperature}_topp_${top_p}_gpu_${num_gpus}_n${num_answers}"
+output_dir="logs/qwen2vl_cot_temp_${temperature}_topp_${top_p}_gpu_${num_gpus}_n${num_answers}"
 output_file="results.json"
 
 echo "Running $num_processes processes with $tensor_parallel_size GPUs each"
@@ -61,10 +61,10 @@ run_inference() {
         --model qwen2vl \
         --qwen2vl_model_path /run/determined/NAS1/public/HuggingFace/Qwen/Qwen2-VL-7B-Instruct \
         --tensor_parallel_size $tensor_parallel_size \
-        --gpu_memory_utilization 0.85 \
+        --gpu_memory_utilization 0.95 \
         --temperature $temperature \
         --top_p $top_p \
-        --max_new_tokens 512 \
+        --max_new_tokens 1024 \
         --output_dir $output_dir \
         --shot_num 0 \
         --shot_type solution \

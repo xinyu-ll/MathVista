@@ -125,11 +125,14 @@ def extract_answer_from_response(response, problem):
         elif answer_type in ["integer", "float"]:
             # Numeric answer handling
             try:
+                float_val = float(extracted)
                 if answer_type == "integer":
-                    return str(int(float(extracted)))
+                    if float_val == float('inf') or float_val == float('-inf') or float_val != float_val:  # Check for inf, -inf, nan
+                        return None
+                    return str(int(float_val))
                 else:
-                    return str(float(extracted))
-            except ValueError:
+                    return str(float_val)
+            except (ValueError, OverflowError):
                 pass
         
         elif answer_type == "list":

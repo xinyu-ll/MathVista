@@ -4,7 +4,7 @@ from typing import Union, Optional
 from PIL import Image
 import base64
 from io import BytesIO
-
+from transformers import AutoTokenizer
 try:
     from vllm import LLM, SamplingParams
     from vllm.multimodal.utils import encode_image_base64
@@ -43,7 +43,7 @@ class Qwen2VL_Model:
             tensor_parallel_size=tensor_parallel_size,
             gpu_memory_utilization=gpu_memory_utilization,
             trust_remote_code=True,
-            max_model_len=8192,  # Increased back to handle longer prompts
+            max_model_len=8192*2,  # Increased back to handle longer prompts
             limit_mm_per_prompt={"image": 1},  # Reduced from 5 to 1 for stability
             enforce_eager=True,  # Disable CUDA graphs to avoid assertion errors
             disable_custom_all_reduce=True,  # Disable custom all-reduce for multi-GPU stability
@@ -60,6 +60,8 @@ class Qwen2VL_Model:
             max_tokens=max_tokens,
             stop_token_ids=None,
         )
+        # 加载tokenizer
+        self.tokenizer = AutoTokenizer.from_pretrained(model_path)
         
         logging.info("Qwen2VL model initialized successfully")
 
@@ -130,12 +132,29 @@ class Qwen2VL_Model:
                         }
                     ]
                 
-                # Generate response(s) using VLLM
-                outputs = self.llm.chat(
-                    messages=messages,
-                    sampling_params=sampling_params,
-                    use_tqdm=False
-                )
+                prompt_str = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)  # text
+                prompt_str += "Let's think step by step."
+                
+                # For VLLM generate, create proper inputs
+                if decoded_image is not None:
+                    # For multimodal input with VLLM
+                    inputs = {
+                        "prompt": prompt_str,
+                        "multi_modal_data": {"image": decoded_image}
+                    }
+                    outputs = self.llm.generate(
+                        inputs,
+                        sampling_params=sampling_params,
+                        use_tqdm=False
+                    )
+                else:
+                    # For text-only input
+                    outputs = self.llm.generate(
+                        [prompt_str],  # VLLM expects a list of prompts
+                        sampling_params=sampling_params,
+                        use_tqdm=False
+                    )
+                logging.info(f"decoded_image: {decoded_image}\nPrompt : {prompt_str}\nOutputs : {outputs[0].outputs[0].text}")
                 
                 if outputs and len(outputs) > 0:
                     # Extract all generated responses
