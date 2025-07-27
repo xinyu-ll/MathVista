@@ -104,7 +104,7 @@ class Qwen2VL_Model:
                 if decoded_image is not None:
                     # Encode image for VLLM
                     image_base64 = self._encode_image(decoded_image)
-                    
+                    #TODO: system prompt / user prompt 对齐baseline
                     # Format the prompt with image for Qwen2VL
                     messages = [
                         {
